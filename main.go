@@ -16,39 +16,51 @@ type Result struct {
 	JobID       int
 }
 
-func process(
+func processQueue(
 	ctx context.Context,
 	workerIndex int,
 	readValue func() (Task, bool),
 	sendValue func(value Result),
 ) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			job, opened := readValue()
-
-			if !opened {
-				return
-			}
-
+	processTask := func(
+		workerIndex int,
+		job Task,
+	) chan Result {
+		resChan := make(chan Result)
+		go func() {
 			fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
 			time.Sleep(time.Second * time.Duration(job.Wait))
+			var result Result
 			if workerIndex+job.ID >= 20 {
-				sendValue(Result{
+				result = Result{
 					WorkerIndex: workerIndex,
 					JobID:       job.ID,
 					Status:      "failed",
-				})
+				}
 			} else {
-				sendValue(Result{
+				result = Result{
 					WorkerIndex: workerIndex,
 					JobID:       job.ID,
 					Status:      "completed",
-				})
+				}
 			}
+			resChan <- result
 			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
+		}()
+		return resChan
+	}
+
+	for {
+		job, opened := readValue()
+		if !opened {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			fmt.Println("Воркеры отменились")
+			return
+		case res := <-processTask(workerIndex, job):
+			sendValue(res)
 		}
 	}
 }
@@ -68,7 +80,7 @@ func main() {
 
 	tasks := GetTaskList()
 
-	worker.New(ctx, tasks, 3, process, resultProcess)
+	worker.New(ctx, tasks, 3, processQueue, resultProcess)
 
 	stop()
 }
