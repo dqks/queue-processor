@@ -20,29 +20,36 @@ type Result struct {
 func process(
 	ctx context.Context,
 	workerIndex int,
-	jobChan <-chan Task,
-	resultChan chan<- Result, wg *sync.WaitGroup,
+	readValue func() (Task, bool),
+	sendValue func(value Result),
+	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
-	for job := range jobChan {
+	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
+			job, opened := readValue()
+
+			if !opened {
+				return
+			}
+
 			fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
 			time.Sleep(time.Second * time.Duration(job.Wait))
 			if workerIndex+job.ID >= 20 {
-				resultChan <- Result{
+				sendValue(Result{
 					WorkerIndex: workerIndex,
 					JobID:       job.ID,
 					Status:      "failed",
-				}
+				})
 			} else {
-				resultChan <- Result{
+				sendValue(Result{
 					WorkerIndex: workerIndex,
 					JobID:       job.ID,
 					Status:      "completed",
-				}
+				})
 			}
 			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		}
@@ -66,6 +73,7 @@ func main() {
 
 	worker.New(ctx, tasks, 3, process, resultProcess)
 
+	stop()
 	<-ctx.Done()
 	fmt.Println("сигнал получен")
 }
