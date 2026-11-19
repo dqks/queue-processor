@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"queue-processor/worker"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -22,9 +21,7 @@ func process(
 	workerIndex int,
 	readValue func() (Task, bool),
 	sendValue func(value Result),
-	wg *sync.WaitGroup,
 ) {
-	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -74,6 +71,4 @@ func main() {
 	worker.New(ctx, tasks, 3, process, resultProcess)
 
 	stop()
-	<-ctx.Done()
-	fmt.Println("сигнал получен")
 }

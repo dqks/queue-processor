@@ -9,7 +9,7 @@ func New[J any, R any](
 	ctx context.Context,
 	jobs []J,
 	workerCount int,
-	processCb func(ctx context.Context, workerIndex int, readValue func() (J, bool), sendValue func(R), wg *sync.WaitGroup),
+	processCb func(ctx context.Context, workerIndex int, readValue func() (J, bool), sendValue func(R)),
 	resultCb func(result R),
 ) {
 	jobChan := make(chan J, len(jobs))
@@ -25,9 +25,14 @@ func New[J any, R any](
 		resultChan <- value
 	}
 
+	processJobs := func(i int) {
+		defer wg.Done()
+		processCb(ctx, i, readValue, sendValue)
+	}
+
 	for i := range workerCount {
 		wg.Add(1)
-		go processCb(ctx, i, readValue, sendValue, &wg)
+		go processJobs(i)
 	}
 
 	for i := range len(jobs) {
