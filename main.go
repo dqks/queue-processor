@@ -19,16 +19,16 @@ type Result struct {
 func processQueue(
 	ctx context.Context,
 	workerIndex int,
-	readValue func() (Task, bool),
-	sendValue func(value Result),
+	sendValue func(Result),
+	sendRetry func(Task),
+	readTask func() (Task, bool),
 ) {
 	processTask := func(
 		workerIndex int,
 		job Task,
 	) Result {
-		// time.Sleep(time.Second * time.Duration(job.Wait))
 		var result Result
-		if workerIndex+job.ID >= 20 {
+		if job.ID%2 == 0 {
 			result = Result{
 				WorkerIndex: workerIndex,
 				JobID:       job.ID,
@@ -45,10 +45,16 @@ func processQueue(
 	}
 
 	for {
-		job, opened := readValue()
+		job, opened := readTask()
+		// // ctx.Err() != nil чтобы не взяли новую задачу в обработку при отмененном контексте
 		if !opened || ctx.Err() != nil {
 			return
 		}
+
+		if job.Retry > 1 {
+			job.Wait = 1
+		}
+
 		fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		select {
 		case <-ctx.Done():
@@ -72,7 +78,13 @@ func processQueue(
 				return
 			}
 			res := processTask(workerIndex, job)
-			sendValue(res)
+			if res.Status == "failed" {
+				job.Retry += 1
+				fmt.Printf("Новая попытка для задачи с ID %d\n", job.ID)
+				sendRetry(job)
+			} else {
+				sendValue(res)
+			}
 			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		}
 	}

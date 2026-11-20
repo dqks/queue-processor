@@ -6,11 +6,10 @@ import (
 )
 
 type Task struct {
-	ID   int
-	Name string
-	Wait int
-	// Ctx    context.Context
-	// Cancel context.CancelFunc
+	ID    int
+	Name  string
+	Wait  int
+	Retry int
 }
 
 // Возвращаем просто указатель потому что так принято и слайс уже содержит внутри себя указатель
@@ -21,9 +20,10 @@ func GetTaskList() []Task {
 	for i := 1; i <= 20; i++ {
 		wait := rand.IntN(3-1+1) + 1
 		tasks = append(tasks, Task{
-			ID:   i,
-			Name: "task " + strconv.Itoa(i),
-			Wait: wait,
+			ID:    i,
+			Name:  "task " + strconv.Itoa(i),
+			Wait:  wait,
+			Retry: 1,
 		})
 	}
 
