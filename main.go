@@ -25,42 +25,55 @@ func processQueue(
 	processTask := func(
 		workerIndex int,
 		job Task,
-	) chan Result {
-		resChan := make(chan Result)
-		go func() {
-			fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
-			time.Sleep(time.Second * time.Duration(job.Wait))
-			var result Result
-			if workerIndex+job.ID >= 20 {
-				result = Result{
-					WorkerIndex: workerIndex,
-					JobID:       job.ID,
-					Status:      "failed",
-				}
-			} else {
-				result = Result{
-					WorkerIndex: workerIndex,
-					JobID:       job.ID,
-					Status:      "completed",
-				}
+	) Result {
+		// time.Sleep(time.Second * time.Duration(job.Wait))
+		var result Result
+		if workerIndex+job.ID >= 20 {
+			result = Result{
+				WorkerIndex: workerIndex,
+				JobID:       job.ID,
+				Status:      "failed",
 			}
-			resChan <- result
-			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
-		}()
-		return resChan
+		} else {
+			result = Result{
+				WorkerIndex: workerIndex,
+				JobID:       job.ID,
+				Status:      "completed",
+			}
+		}
+		return result
 	}
 
 	for {
 		job, opened := readValue()
-		if !opened {
+		if !opened || ctx.Err() != nil {
 			return
 		}
+		fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		select {
 		case <-ctx.Done():
-			fmt.Println("Воркеры отменились")
+			sendValue(Result{
+				WorkerIndex: workerIndex,
+				JobID:       job.ID,
+				Status:      "canceled",
+			})
+			fmt.Printf("Воркер %d отменился\n", workerIndex)
 			return
-		case res := <-processTask(workerIndex, job):
+		case <-time.After(time.Duration(job.Wait) * time.Second):
+			// Проверка, потому что обе ветки могут быть готовы одновременно
+			// И может выбраться именно эта ветка
+			if ctx.Err() != nil {
+				sendValue(Result{
+					WorkerIndex: workerIndex,
+					JobID:       job.ID,
+					Status:      "canceled",
+				})
+				fmt.Printf("Воркер %d отменился\n", workerIndex)
+				return
+			}
+			res := processTask(workerIndex, job)
 			sendValue(res)
+			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		}
 	}
 }
