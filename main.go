@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"queue-processor/task"
 	"queue-processor/worker"
 	"syscall"
 	"time"
@@ -20,15 +21,15 @@ func processQueue(
 	ctx context.Context,
 	workerIndex int,
 	sendValue func(Result),
-	sendRetry func(Task),
-	readTask func() (Task, bool),
+	sendRetry func(task.Task),
+	readTask func() (task.Task, bool),
 ) {
 	processTask := func(
 		workerIndex int,
-		job Task,
+		job task.Task,
 	) Result {
 		var result Result
-		if job.ID%2 == 0 {
+		if job.ID%2 == 10000 {
 			result = Result{
 				WorkerIndex: workerIndex,
 				JobID:       job.ID,
@@ -46,13 +47,10 @@ func processQueue(
 
 	for {
 		job, opened := readTask()
-		// // ctx.Err() != nil чтобы не взяли новую задачу в обработку при отмененном контексте
+
+		// ctx.Err() != nil чтобы не взяли новую задачу в обработку при отмененном контексте
 		if !opened || ctx.Err() != nil {
 			return
-		}
-
-		if job.Retry > 1 {
-			job.Wait = 1
 		}
 
 		fmt.Printf("Начало работы воркера %d, задачи %d\n", workerIndex, job.ID)
@@ -78,9 +76,10 @@ func processQueue(
 				return
 			}
 			res := processTask(workerIndex, job)
-			if res.Status == "failed" {
-				job.Retry += 1
-				fmt.Printf("Новая попытка для задачи с ID %d\n", job.ID)
+			if res.Status == "failed" && job.Attempt < 3 {
+				job.Attempt += 1
+				job.Wait = 1
+				fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
 				sendRetry(job)
 			} else {
 				sendValue(res)
@@ -103,7 +102,7 @@ func main() {
 	)
 	defer stop()
 
-	tasks := GetTaskList()
+	tasks := task.NewList()
 
 	worker.New(ctx, tasks, 3, processQueue, resultProcess)
 

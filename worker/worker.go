@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -20,20 +19,9 @@ func New[J any, R any](
 	resultCb func(result R),
 ) {
 	jobChan := make(chan J, len(jobs))
+	retryChan := make(chan J, len(jobs)*2)
 	resultChan := make(chan R, len(jobs))
-	retryChan := make(chan J, len(jobs)*3)
 	var wg sync.WaitGroup
-
-	readTask := func() (J, bool) {
-		select {
-		case res, opened := <-retryChan:
-			fmt.Println("Из ретрая")
-			return res, opened
-		case res, opened := <-jobChan:
-			fmt.Println("Из работ")
-			return res, opened
-		}
-	}
 
 	sendValue := func(value R) {
 		resultChan <- value
@@ -42,6 +30,30 @@ func New[J any, R any](
 	sendRetry := func(value J) {
 		retryChan <- value
 	}
+
+	readTask := func() (J, bool) {
+		select {
+		case res, ok := <-retryChan:
+			return res, ok
+		case res, ok := <-jobChan:
+			if !ok {
+				select {
+				case res, ok := <-retryChan:
+					return res, ok
+				default:
+					return *new(J), false
+				}
+			}
+			return res, ok
+		default:
+			return *new(J), false
+		}
+	}
+
+	for i := range len(jobs) {
+		jobChan <- jobs[i]
+	}
+	close(jobChan)
 
 	processJobs := func(i int) {
 		defer wg.Done()
@@ -58,11 +70,6 @@ func New[J any, R any](
 		wg.Add(1)
 		go processJobs(i)
 	}
-
-	for i := range len(jobs) {
-		jobChan <- jobs[i]
-	}
-	close(jobChan)
 
 	go func() {
 		wg.Wait()
