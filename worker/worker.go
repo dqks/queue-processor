@@ -21,6 +21,7 @@ func New[J any, R any](
 	jobChan := make(chan J, len(jobs))
 	retryChan := make(chan J, len(jobs)*2)
 	resultChan := make(chan R, len(jobs))
+	countChan := make(chan struct{}, len(jobs))
 	var wg sync.WaitGroup
 
 	sendValue := func(value R) {
@@ -32,21 +33,22 @@ func New[J any, R any](
 	}
 
 	readTask := func() (J, bool) {
-		select {
-		case res, ok := <-retryChan:
-			return res, ok
-		case res, ok := <-jobChan:
-			if !ok {
-				select {
-				case res, ok := <-retryChan:
-					return res, ok
-				default:
-					return *new(J), false
-				}
+		if len(jobChan) != 0 {
+			select {
+			case res, _ := <-retryChan:
+				return res, !(len(countChan) == len(jobs))
+			case res, _ := <-jobChan:
+				return res, !(len(countChan) == len(jobs))
+			case <-ctx.Done():
+				return *new(J), false
 			}
-			return res, ok
-		default:
-			return *new(J), false
+		} else {
+			select {
+			case res, _ := <-retryChan:
+				return res, !(len(countChan) == len(jobs))
+			case <-ctx.Done():
+				return *new(J), false
+			}
 		}
 	}
 
@@ -74,10 +76,13 @@ func New[J any, R any](
 	go func() {
 		wg.Wait()
 		close(resultChan)
-		close(retryChan)
 	}()
 
 	for r := range resultChan {
+		countChan <- struct{}{}
+		if len(countChan) == len(jobs) {
+			close(retryChan)
+		}
 		resultCb(r)
 	}
 }

@@ -29,7 +29,7 @@ func processQueue(
 		job task.Task,
 	) Result {
 		var result Result
-		if job.ID%2 == 10000 {
+		if job.ID%2 == 0 {
 			result = Result{
 				WorkerIndex: workerIndex,
 				JobID:       job.ID,
@@ -102,7 +102,8 @@ func main() {
 	)
 	defer stop()
 
-	tasks := task.NewList()
+	// tasks := task.NewList()
+	tasks := []task.Task{}
 
 	worker.New(ctx, tasks, 3, processQueue, resultProcess)
 
