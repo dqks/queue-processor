@@ -102,10 +102,7 @@ func main() {
 	)
 	defer stop()
 
-	// tasks := task.NewList()
-	tasks := []task.Task{}
+	tasks := task.NewList()
 
 	worker.New(ctx, tasks, 3, processQueue, resultProcess)
-
-	stop()
 }
