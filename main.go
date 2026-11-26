@@ -48,8 +48,7 @@ func processQueue(
 	for {
 		job, opened := readTask()
 
-		// ctx.Err() != nil чтобы не взяли новую задачу в обработку при отмененном контексте
-		if !opened || (ctx.Err() != nil && !opened) {
+		if !opened {
 			return
 		}
 
@@ -62,9 +61,6 @@ func processQueue(
 				Status:      "canceled",
 			})
 			fmt.Printf("Воркер %d отменился\n", workerIndex)
-			if !opened {
-				return
-			}
 		case <-time.After(time.Duration(job.Wait) * time.Second):
 			// Проверка, потому что обе ветки могут быть готовы одновременно
 			// И может выбраться именно эта ветка
@@ -75,18 +71,18 @@ func processQueue(
 					Status:      "canceled",
 				})
 				fmt.Printf("Воркер %d отменился\n", workerIndex)
-				return
-			}
-			res := processTask(workerIndex, job)
-			if res.Status == "failed" && job.Attempt < 3 {
-				job.Attempt += 1
-				job.Wait = 1
-				fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
-				sendRetry(job)
 			} else {
-				sendValue(res)
+				res := processTask(workerIndex, job)
+				if res.Status == "failed" && job.Attempt < 3 {
+					job.Attempt += 1
+					job.Wait = 1
+					fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
+					sendRetry(job)
+				} else {
+					sendValue(res)
+				}
+				fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
 			}
-			fmt.Printf("Конец работы воркера %d, задачи %d\n", workerIndex, job.ID)
 		}
 	}
 }
