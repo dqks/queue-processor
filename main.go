@@ -33,7 +33,7 @@ func processQueue(
 		result := Result{
 			WorkerIndex: workerIndex,
 			JobID:       job.ID,
-			Status:      status[rand.IntN(1-0+1)+0],
+			Status:      status[rand.IntN(2)],
 		}
 		return result
 	}
@@ -69,11 +69,16 @@ func processQueue(
 				if res.Status == "failed" && job.Attempt < 3 {
 					select {
 					case <-time.After(1 * time.Second):
-						job.Attempt += 1
-						fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
-						sendRetry(job)
+						if ctx.Err() != nil {
+							res.Status = "canceled"
+							sendValue(res)
+						} else {
+							job.Attempt += 1
+							fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
+							sendRetry(job)
+						}
 					case <-ctx.Done():
-						res.Status = "failed"
+						res.Status = "canceled"
 						sendValue(res)
 					}
 				} else {
