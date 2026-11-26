@@ -49,7 +49,7 @@ func processQueue(
 		job, opened := readTask()
 
 		// ctx.Err() != nil чтобы не взяли новую задачу в обработку при отмененном контексте
-		if !opened || ctx.Err() != nil {
+		if !opened || (ctx.Err() != nil && !opened) {
 			return
 		}
 
@@ -62,7 +62,9 @@ func processQueue(
 				Status:      "canceled",
 			})
 			fmt.Printf("Воркер %d отменился\n", workerIndex)
-			return
+			if !opened {
+				return
+			}
 		case <-time.After(time.Duration(job.Wait) * time.Second):
 			// Проверка, потому что обе ветки могут быть готовы одновременно
 			// И может выбраться именно эта ветка
@@ -103,6 +105,6 @@ func main() {
 	defer stop()
 
 	tasks := task.NewList()
-
+	// stop()
 	worker.New(ctx, tasks, 3, processQueue, resultProcess)
 }

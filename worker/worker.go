@@ -19,15 +19,18 @@ func New[J any, R any](
 	),
 	resultCb func(result R),
 ) {
-	if len(jobs) == 0 {
+	if len(jobs) == 0 || workerCount == 0 {
 		return
 	}
 
 	jobChan := make(chan J, len(jobs))
 	retryChan := make(chan J, len(jobs)*2)
 	resultChan := make(chan R, len(jobs))
-	var processedJobs atomic.Int64
+	retryClosed := false
+	var processedJobs = 0
+	var sentJobs atomic.Int64
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 
 	sendValue := func(value R) {
 		resultChan <- value
@@ -42,9 +45,37 @@ func New[J any, R any](
 		case res, ok := <-retryChan:
 			return res, ok
 		case res, ok := <-jobChan:
+			mu.Lock()
+			if ctx.Err() != nil {
+				if sentJobs.Load() == 0 {
+					mu.Unlock()
+					return *new(J), false
+				}
+				if sentJobs.Load() == int64(processedJobs) && !retryClosed {
+					retryClosed = true
+					close(retryChan)
+				}
+				mu.Unlock()
+				res, ok := <-retryChan
+				return res, ok
+			}
+			sentJobs.Add(1)
+			mu.Unlock()
 			return res, ok
 		case <-ctx.Done():
-			return *new(J), false
+			// Если контекст отменяется и не отправлено ни одной работы
+			if sentJobs.Load() == 0 {
+				return *new(J), false
+			}
+
+			mu.Lock()
+			if sentJobs.Load() == int64(processedJobs) && !retryClosed {
+				retryClosed = true
+				close(retryChan)
+			}
+			mu.Unlock()
+			res, ok := <-retryChan
+			return res, ok
 		}
 	}
 
@@ -75,11 +106,14 @@ func New[J any, R any](
 	}()
 
 	for r := range resultChan {
-		processedJobs.Add(1)
-
-		if int(processedJobs.Load()) == len(jobs) {
+		mu.Lock()
+		processedJobs += 1
+		if (processedJobs == len(jobs) && !retryClosed) ||
+			(sentJobs.Load() == int64(processedJobs) && ctx.Err() != nil && !retryClosed) {
+			retryClosed = true
 			close(retryChan)
 		}
+		mu.Unlock()
 
 		resultCb(r)
 	}
