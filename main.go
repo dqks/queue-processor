@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/signal"
 	"queue-processor/task"
@@ -28,19 +29,11 @@ func processQueue(
 		workerIndex int,
 		job task.Task,
 	) Result {
-		var result Result
-		if job.ID%2 == 0 {
-			result = Result{
-				WorkerIndex: workerIndex,
-				JobID:       job.ID,
-				Status:      "failed",
-			}
-		} else {
-			result = Result{
-				WorkerIndex: workerIndex,
-				JobID:       job.ID,
-				Status:      "completed",
-			}
+		status := [2]string{"failed", "completed"}
+		result := Result{
+			WorkerIndex: workerIndex,
+			JobID:       job.ID,
+			Status:      status[rand.IntN(1-0+1)+0],
 		}
 		return result
 	}
@@ -60,7 +53,7 @@ func processQueue(
 				JobID:       job.ID,
 				Status:      "canceled",
 			})
-			fmt.Printf("Воркер %d отменился\n", workerIndex)
+			fmt.Printf("Воркер %d досрочно пытается завершить работу\n", workerIndex)
 		case <-time.After(time.Duration(job.Wait) * time.Second):
 			// Проверка, потому что обе ветки могут быть готовы одновременно
 			// И может выбраться именно эта ветка
@@ -70,14 +63,19 @@ func processQueue(
 					JobID:       job.ID,
 					Status:      "canceled",
 				})
-				fmt.Printf("Воркер %d отменился\n", workerIndex)
+				fmt.Printf("Воркер %d досрочно пытается завершить работу\n", workerIndex)
 			} else {
 				res := processTask(workerIndex, job)
 				if res.Status == "failed" && job.Attempt < 3 {
-					job.Attempt += 1
-					job.Wait = 1
-					fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
-					sendRetry(job)
+					select {
+					case <-time.After(1 * time.Second):
+						job.Attempt += 1
+						fmt.Printf("Новая попытка %d для задачи с ID %d\n", job.Attempt, job.ID)
+						sendRetry(job)
+					case <-ctx.Done():
+						res.Status = "failed"
+						sendValue(res)
+					}
 				} else {
 					sendValue(res)
 				}

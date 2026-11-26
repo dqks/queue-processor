@@ -67,7 +67,6 @@ func New[J any, R any](
 			if sentJobs.Load() == 0 {
 				return *new(J), false
 			}
-
 			mu.Lock()
 			if sentJobs.Load() == int64(processedJobs) && !retryClosed {
 				retryClosed = true
