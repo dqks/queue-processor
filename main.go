@@ -103,7 +103,7 @@ func main() {
 	)
 	defer stop()
 
-	tasks := task.NewList()
+	tasks := task.NewList(20, rand.IntN(3-1+1)+1)
 	// stop()
 	worker.New(ctx, tasks, 3, processQueue, resultProcess)
 }

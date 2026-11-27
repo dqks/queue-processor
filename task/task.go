@@ -1,7 +1,6 @@
 package task
 
 import (
-	"math/rand/v2"
 	"strconv"
 )
 
@@ -14,11 +13,11 @@ type Task struct {
 
 // Возвращаем просто указатель потому что так принято и слайс уже содержит внутри себя указатель
 // который указывает только на элементы, но копировать заголовки стоит дешево
-func NewList() []Task {
+func NewList(n int, wait int) []Task {
 	tasks := make([]Task, 0, 20)
 
-	for i := 1; i <= 20; i++ {
-		wait := rand.IntN(3-1+1) + 1
+	for i := 1; i <= n; i++ {
+		wait := wait
 		tasks = append(tasks, Task{
 			ID:      i,
 			Name:    "task " + strconv.Itoa(i),
